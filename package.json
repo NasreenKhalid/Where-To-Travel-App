@@ -5,7 +5,6 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "deploy-build": "SKIP_ESLINT=true next build",
     "start": "next start",
     "lint": "next lint"
   },
