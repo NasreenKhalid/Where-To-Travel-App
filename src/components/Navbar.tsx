@@ -1,6 +1,6 @@
 'use client';
 
-// import Link from 'next/link';
+
 // import { useRouter } from 'next/navigation';
 // import { motion } from 'framer-motion';
 
@@ -15,9 +15,10 @@ export const Navbar: React.FC = () => {
       <div className="container mx-auto px-4">
         <div className="flex justify-between items-center">
           {/* Logo */}
-          <Link href="/" className="text-white text-2xl font-bold">
-            Where-To
-          </Link>
+          <Link href="/" className="flex items-center space-x-1 cursor-pointer">
+  <h1 className="text-2xl font-bold">WHERE TO</h1>
+  <span className="text-xs bg-purple-500 text-white px-2 py-1 rounded">TRAVEL ADVISOR</span>
+</Link>
 
           {/* Mobile menu button */}
           <div className="md:hidden">

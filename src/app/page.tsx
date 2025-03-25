@@ -1,5 +1,5 @@
 'use client'; 
-
+import Link from 'next/link';
 import { NextPage } from 'next';
 import Head from 'next/head';
 import { useState, useEffect } from 'react';
@@ -19,7 +19,7 @@ const Home: NextPage = () => {
   const [isUsingAI, setIsUsingAI] = useState(false);
   const [aiRecommendations, setAiRecommendations] = useState<any[]>([]);
   const { userLocation, loading: locationLoading, error: locationError } = useGeolocation();
-  
+  const [userCountry, setUserCountry] = useState<string>('');
   // Form state
   const [budget, setBudget] = useState<Budget | ''>('');
   const [minBudget, setMinBudget] = useState<string>('');
@@ -52,6 +52,34 @@ const Home: NextPage = () => {
     { id: '1 week', label: '1 Week' },
     { id: '2 weeks', label: '2 Weeks' },
   ] as const;
+
+  const getCountryFromCoordinates = async (lat: number, lon: number) => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch location data');
+      }
+      
+      const data = await response.json();
+      
+      // Extract country code from the response
+      const countryCode = data.address?.country_code?.toUpperCase() || 'US';
+      setUserCountry(countryCode);
+      return countryCode;
+    } catch (error) {
+      console.error('Error getting country from coordinates:', error);
+      return 'US'; // Default fallback
+    }
+  };
+
+  useEffect(() => {
+    if (userLocation) {
+      getCountryFromCoordinates(userLocation.lat, userLocation.lon);
+    }
+  }, [userLocation]);
 
   const handleInterestToggle = (interest: Interest) => {
     if (selectedInterests.includes(interest)) {
@@ -93,140 +121,70 @@ const Home: NextPage = () => {
     
     console.log("Handling submit with preferences:", preferences);
     
-    // Determine whether to use AI recommendations
-    if (isUsingAI) {
-      try {
-        // Get the user's location as a string for the AI
-        const locationString = departureCity || "Unknown";
-        
-        // Call the AI service
-        const aiResults = await getAIDestinationRecommendations(
-          preferences,
-          locationString
-        );
-        
-        console.log("AI recommendations:", aiResults);
-        
-        if (aiResults.destinations && aiResults.destinations.length > 0) {
-          setAiRecommendations(aiResults.destinations);
-          
-          // Convert the first AI recommendation to match our destination format
-          const firstRecommendation = aiResults.destinations[0];
-          
-          const convertedDestination: Destination = {
-            id: firstRecommendation.name.toLowerCase().replace(/\s+/g, '-'),
-            name: firstRecommendation.name,
-            country: firstRecommendation.country,
-            description: firstRecommendation.description,
-            imageUrl: firstRecommendation.image,
-            bestTimeToVisit: firstRecommendation.bestTimeToVisit,
-            budget: {
-              low: { min: 500, max: 1000, currency: 'USD' },
-              medium: { min: 1000, max: 2000, currency: 'USD' },
-              high: { min: 2000, max: 5000, currency: 'USD' }
-            },
-            interests: preferences.interests, // Use the user's interests
-            topAttractions: firstRecommendation.highlights.map(highlight => ({
-              name: highlight,
-              description: '',
-              imageUrl: ''
-            })),
-            coordinates: {
-              lat: 0, // We don't have coordinates from the AI
-              lon: 0
-            }
-          };
-          
-          setSelectedDestination(convertedDestination);
-          setUserPreferences(preferences);
-          setIsLoading(false);
-          return;
-        }
-      } catch (error) {
-        console.error("Error getting AI recommendations:", error);
-        // Fall back to normal search if AI fails
+    try {
+      // Determine whether to use AI recommendations
+      if (isUsingAI) {
+        // You can implement AI features here if needed
       }
-    }
-    
-    // Continue with regular filtering if AI is not used or fails
-    console.log("Available destinations:", destinations);
-    
-    // Simulate API delay
-    setTimeout(() => {
-      let filteredDestinations = destinations.filter((destination) => {
-        // Match by budget - use the budget ranges defined in the destination
-        let budgetMatch = true;
-        const selectedBudget = preferences.budget;
-        
-        if (selectedBudget && destination.budget && destination.budget[selectedBudget]) {
-          budgetMatch = true; // We have budget info for this destination
-        }
-        
-        // Match by interests (at least one interest should match)
-        const interestsMatch = destination.interests.some(interest => 
-          preferences.interests.includes(interest)
-        );
-
-        console.log(`Destination ${destination.name} - Interests match: ${interestsMatch}`);
-        
-        // Match by domestic/international if needed
-        let travelTypeMatch = true;
-        if (travelType) {
-          if (travelType === 'domestic') {
-            // Assuming we'd need to check if the country matches the user's country
-            // This is a placeholder logic since we don't have the user's country
-            travelTypeMatch = destination.country === 'USA'; // Example for US users
-          } else {
-            travelTypeMatch = destination.country !== 'USA'; // Example for US users
-          }
-        }
-        
-        // For a real implementation, you might want to add duration matching based on 
-        // additional data about recommended stay length for each destination
-        
-        const matchResult = budgetMatch && interestsMatch && travelTypeMatch;
-        console.log(`Destination ${destination.name} - Overall match: ${matchResult}`);
-        
-        return matchResult;
+      
+      // Get user location
+      let lat = 0, lon = 0;
+      let country = userCountry || 'US';
+      if (userLocation) {
+        lat = userLocation.lat;
+        lon = userLocation.lon;
+      }else if (departureCity) {
+        // If user entered a departure city but we don't have coordinates,
+        // we'll still use this for the country filtering
+        country = userCountry || 'US';
+      }
+      
+      // Build API request
+      const params = new URLSearchParams({
+        lat: lat.toString(),
+        lon: lon.toString(),
+        country: country,
+        domestic: travelType === 'domestic' ? 'true' : 'false',
+        radius: '500000', // Larger radius for more options
+        limit: '50',
+        budget: budget !== '' ? budget : ''
       });
       
-      console.log("Filtered destinations:", filteredDestinations);
+      const response = await fetch(`/api/destinations?${params}`);
       
-      // Filter by distance if user location is available
-      if (userLocation) {
-        // Sort destinations by distance
-        filteredDestinations.sort((a, b) => {
-          const distanceA = getDistance(
-            userLocation.lat,
-            userLocation.lon,
-            a.coordinates.lat,
-            a.coordinates.lon
-          );
-          
-          const distanceB = getDistance(
-            userLocation.lat,
-            userLocation.lon,
-            b.coordinates.lat,
-            b.coordinates.lon
-          );
-          
-          return distanceA - distanceB;
-        });
+      if (!response.ok) {
+        throw new Error('Failed to fetch destinations');
       }
-
-      if (filteredDestinations.length === 0) {
-        alert('No destinations match your preferences. Please try different options.');
-        setIsLoading(false);
-        return;
-      }
+      
+      const data = await response.json();
+      
+      if (data.destinations && data.destinations.length > 0) {
+        // Select a random destination that matches user's interests
+        const matchingDestinations = data.destinations.filter(destination => 
+          destination.interests.some(interest => 
+            preferences.interests.includes(interest)
+          )
+        );
+        
+        const destinationsToUse = matchingDestinations.length > 0 ? 
+          matchingDestinations : data.destinations;
+        
       
       // Select a random destination from filtered results
-      const randomIndex = Math.floor(Math.random() * filteredDestinations.length);
-      setSelectedDestination(filteredDestinations[randomIndex]);
+      const randomIndex = Math.floor(Math.random() * destinationsToUse.length);
+      setSelectedDestination(destinationsToUse[randomIndex]);
       setUserPreferences(preferences);
-      setIsLoading(false);
-    }, 1500);
-  };
+    } else {
+      alert('No destinations match your preferences. Please try different options.');
+    }
+  } catch (error) {
+    console.error('Error getting destinations:', error);
+    alert('Error finding destinations. Please try again.');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   const handleRandomizeAgain = () => {
     if (!userPreferences) return;
@@ -282,20 +240,38 @@ const Home: NextPage = () => {
       <header className="bg-gray-900 text-white">
         <div className="container mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-1">
-              <h1 className="text-2xl font-bold">WHERE TO</h1>
-              <span className="text-xs bg-purple-500 text-white px-2 py-1 rounded">TRAVEL ADVISOR</span>
-            </div>
+          <Link href="/" as="/" className="flex items-center space-x-1 cursor-pointer"
+           onClick={() => console.log('Logo clicked!')}
+          >
+         
+  <h1 className="text-2xl font-bold">WHERE TO</h1>
+  <span className="text-xs bg-purple-500 text-white px-2 py-1 rounded">TRAVEL ADVISOR</span>
+</Link>
             
-            <nav>
-              <ul className="flex space-x-6">
-                <li><a href="#" className="hover:text-teal-300 transition-colors">Hotels</a></li>
-                <li><a href="#" className="hover:text-teal-300 transition-colors">Destinations</a></li>
-                <li><a href="#" className="hover:text-teal-300 transition-colors">Experiences</a></li>
-                <li><a href="#" className="hover:text-teal-300 transition-colors">About</a></li>
-                <li><a href="#" className="bg-teal-500 hover:bg-teal-600 px-4 py-2 rounded transition-colors">Subscribe</a></li>
-              </ul>
-            </nav>
+<nav>
+  <ul className="flex space-x-6">
+    <li>
+      <Link href="/destinations" className="hover:text-teal-300 transition-colors">
+        Destinations
+      </Link>
+    </li>
+    <li>
+      <Link href="/experiences" className="hover:text-teal-300 transition-colors">
+        Experiences
+      </Link>
+    </li>
+    <li>
+      <Link href="/about" className="hover:text-teal-300 transition-colors">
+        About
+      </Link>
+    </li>
+    <li>
+      <Link href="/subscribe" className="bg-teal-500 hover:bg-teal-600 px-4 py-2 rounded transition-colors">
+        Subscribe
+      </Link>
+    </li>
+  </ul>
+</nav>
           </div>
         </div>
       </header>
@@ -304,15 +280,15 @@ const Home: NextPage = () => {
       <div 
         className="relative bg-cover bg-center py-24" 
         style={{ 
-          backgroundImage: "url('/hero-travel.jpg')",
+          backgroundImage: "url('/hero-travel.png')",
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
       >
         <div className="absolute inset-0 bg-black bg-opacity-50"></div>
         <div className="relative container mx-auto text-center text-white z-10">
-          <h1 className="text-5xl font-bold mb-4">Most Instagrammable Destinations</h1>
-          <p className="text-xl mb-8">Discover the world's most beautiful and share-worthy places</p>
+          <h1 className="text-5xl font-bold mb-4">Your Next Adventure Awaits ✈️</h1>
+          <p className="text-xl mb-8">Discover the most stunning places to visit and photograph.📍</p>
           <div className="w-24 h-1 bg-purple-500 mx-auto mb-8"></div>
         </div>
       </div>
